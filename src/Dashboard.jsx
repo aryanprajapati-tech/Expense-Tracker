@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-
+import EditIcon from "@mui/icons-material/Edit";
 import {
   Box,
   Paper,
@@ -35,6 +35,7 @@ import {
   createTheme,
   CssBaseline,
 } from "@mui/material";
+import { TablePagination } from "@mui/material";
 
 import CloseIcon from "@mui/icons-material/Close";
 import CategoryIcon from "@mui/icons-material/Category";
@@ -45,7 +46,7 @@ import FilterAltIcon from "@mui/icons-material/FilterAlt";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
-
+import DeleteIcon from "@mui/icons-material/Delete";
 
 // ----- Consistent color palette pulled from the original design -----
 const theme = createTheme({
@@ -86,7 +87,7 @@ function Dashboard() {
   const [type, setType] = useState("");
   const [note, setNote] = useState("");
   const [date, setDate] = useState(null);
-
+const[editId,seteditId]=useState(null);
   const [fromDate, setFromDate] = useState(null);
   const [toDate, setToDate] = useState(null);
   const [filter, setFilter] = useState("All");
@@ -95,25 +96,39 @@ function Dashboard() {
   const today = dayjs();
 
   const [transaction, setTransaction] = useState([]);
-
+const [page, setPage] = useState(0);
+const[totalPages,setTotalpage]=useState(0);
+const size=10;
+const [totalIncome, setTotalIncome] = useState(0);
+const [totalExpense, setTotalExpense] = useState(0);
+const [balance, setBalance] = useState(0);
   const loadTransaction = async () => {
     const token = localStorage.getItem("token");
-    const response = await fetch("http://localhost:8080/transaction",{
+    const response = await fetch(`http://localhost:8080/transaction?page=${page}&size=${size}`,{
       method:"GET",
       headers:{
         "Authorization": `Bearer ${token}`,
             "Content-Type": "application/json",
-        }
-      
-    });
+        },
+    
+    })
+   if (response.status === 401) {
+    localStorage.removeItem("token");
+    localStorage.removeItem("loginTime");
+    navigate("/login", { replace: true });
+    return;
+  }
    
     const data = await response.json();
-    setTransaction(data);
+    setTransaction(data.content);
+    setTotalpage(data.totalPages);
+
   };
 
   useEffect(() => {
     loadTransaction();
-  }, []);
+    loadSummary();
+  }, [page]);
 
   const clearForm = () => {
     setCategory("");
@@ -147,16 +162,11 @@ const token = localStorage.getItem("token");
 
     loadTransaction();
   };
+const handleChangePage = (event, newPage) => {
+  setPage(newPage);
+};
 
-  const totalIncome = transaction
-    .filter((t) => t.type === "INCOME")
-    .reduce((sum, t) => sum + Number(t.amount), 0);
-
-  const totalExpense = transaction
-    .filter((t) => t.type === "EXPENSE")
-    .reduce((sum, t) => sum + Number(t.amount), 0);
-
-  const balance = totalIncome - totalExpense;
+  
 
   const fromStr = fromDate ? fromDate.format("YYYY-MM-DD") : "";
   const toStr = toDate ? toDate.format("YYYY-MM-DD") : "";
@@ -183,6 +193,78 @@ useEffect(() => {
 
   return () => clearTimeout(timer);
 }, [navigate]);
+const loadSummary = async () => {
+
+    const token = localStorage.getItem("token");
+
+    const response = await fetch(
+        "http://localhost:8080/transaction/summary",
+        {
+            method: "GET",
+            headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json"
+            }
+        }
+    );
+
+    if (response.status === 401) {
+        localStorage.removeItem("token");
+        navigate("/login", { replace: true });
+        return;
+    }
+
+    const data = await response.json();
+
+    setTotalIncome(data.totalIncome);
+    setTotalExpense(data.totalExpense);
+    setBalance(data.balance);
+};
+const updateTransaction = async (e) => {
+   e.preventDefault();
+    const transaction = {
+        category,
+        amount,
+        type,
+        note,
+        date
+    };
+
+    const response = await fetch(
+        `http://localhost:8080/transaction/${editId}`,
+        {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${localStorage.getItem("token")}`
+            },
+            body: JSON.stringify(transaction)
+        }
+    );
+
+    if (response.ok) {
+    loadTransaction();
+    loadSummary();
+    clearForm();
+    seteditId(null);
+    setShowModal(false);
+  }
+};
+const deleteTransaction = async (id) => {
+
+    const token = localStorage.getItem("token");
+
+    await fetch(`http://localhost:8080/transaction/${id}`, {
+        method: "DELETE",
+        headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+        }
+    });
+
+    loadTransaction();
+    loadSummary();
+};
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -218,7 +300,7 @@ useEffect(() => {
               }}
             >
               <Typography variant="h6" sx={{ color: "#fff", fontWeight: 700 }}>
-                Add Transaction
+              {editId ? "Update Transaction" : "Add Transaction"}
               </Typography>
               <IconButton
                 size="small"
@@ -233,7 +315,18 @@ useEffect(() => {
             </Box>
 
             <DialogContent sx={{ pt: 3 }}>
-              <Box component="form" onSubmit={handleSubmit}>
+              <Box component="form"
+                 onSubmit={(e) => {
+        e.preventDefault();
+
+        if (editId) {
+            updateTransaction(e);
+        } else {
+            handleSubmit(e);
+        }
+    }}
+             
+              >
                 <Stack spacing={2.5}>
                   <FormControl fullWidth required size="small">
                     <InputLabel id="category-label">Category</InputLabel>
@@ -324,7 +417,8 @@ useEffect(() => {
                     fullWidth
                     sx={{ py: 1.2, fontSize: "15px" }}
                   >
-                    Save
+                    
+                      {editId ? "Update" : "Save"}
                   </Button>
                 </Stack>
               </Box>
@@ -566,11 +660,72 @@ useEffect(() => {
                       />
                     </TableCell>
                     <TableCell>{t.note}</TableCell>
+                    <TableCell>
+                       <IconButton
+        variant="contained"
+       
+        color="warning"
+        onClick={() => {
+
+            seteditId(t.id);
+
+            setCategory(t.category);
+            setAmount(t.amount);
+            setType(t.type);
+            setNote(t.note);
+            setDate(dayjs(t.date));
+
+            setShowModal(true);
+
+        }}
+    >
+        
+    <EditIcon/>
+     </IconButton>
+
+    <IconButton
+        color="error"
+        onClick={() => deleteTransaction(t.id)}
+    >
+        <DeleteIcon />
+    </IconButton>
+                    </TableCell>
                   </TableRow>
                 ))}
+             
               </TableBody>
             </Table>
           </TableContainer>
+          <Box
+  sx={{
+    display: "flex",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    gap: 2,
+    mt: 3,
+    pr:2,
+  }}
+>
+  <Button
+    variant="contained"
+    disabled={page === 0}
+    onClick={() => setPage(page - 1)}
+  >
+    Previous
+  </Button>
+
+  <Typography>
+    Page {page + 1} of {totalPages}
+  </Typography>
+
+  <Button
+    variant="contained"
+    disabled={page === totalPages - 1}
+    onClick={() => setPage(page + 1)}
+  >
+    Next
+  </Button>
+</Box>
         </Box>
       </LocalizationProvider>
     </ThemeProvider>

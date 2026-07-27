@@ -47,9 +47,9 @@ function Login() {
     console.log(result);
  if (response.ok && result.accessToken) {
 
-    // Save JWT
+    // Save J
     localStorage.setItem("token", result.accessToken);
-     
+     localStorage.setItem("loginTime", Date.now());
     
     // Go to Dashboard
     navigate("/dashboard",{replace: true});
