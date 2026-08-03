@@ -4,6 +4,18 @@ import { useNavigate } from "react-router-dom";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
+import { useDispatch, useSelector } from "react-redux";
+
+import {
+  fetchTransactions,
+  createTransactions,
+  updateTransactions as updateTransactionAction,
+  deleteTransactions as deleteTransactionAction,
+} from "./redux/transactionSlice";
+
+import { fetchSummary } from "./redux/summarySlice";
+
+import { logout } from "./redux/authSlice";
 import EditIcon from "@mui/icons-material/Edit";
 import {
   Box,
@@ -94,42 +106,25 @@ const[editId,seteditId]=useState(null);
    const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
   const today = dayjs();
-
-  const [transaction, setTransaction] = useState([]);
-const [page, setPage] = useState(0);
-const[totalPages,setTotalpage]=useState(0);
+const dispatch = useDispatch();
 const size=10;
-const [totalIncome, setTotalIncome] = useState(0);
-const [totalExpense, setTotalExpense] = useState(0);
-const [balance, setBalance] = useState(0);
-  const loadTransaction = async () => {
-    const token = localStorage.getItem("token");
-    const response = await fetch(`http://localhost:8080/transaction?page=${page}&size=${size}`,{
-      method:"GET",
-      headers:{
-        "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json",
-        },
-    
-    })
-   if (response.status === 401) {
-    localStorage.removeItem("token");
-    localStorage.removeItem("loginTime");
-    navigate("/login", { replace: true });
-    return;
-  }
-   
-    const data = await response.json();
-    setTransaction(data.content);
-    setTotalpage(data.totalPages);
-
-  };
-
-  useEffect(() => {
-    loadTransaction();
-    loadSummary();
-  }, [page]);
-
+ const transactions = useSelector(
+  (state) => state.transaction.transactions 
+);
+const totalPages = useSelector(
+  (state) => state.transaction.totalPages
+);
+const { totalIncome, totalExpense, balance } = useSelector(
+  (state) => state.summary
+);
+const loadTransaction = () => {
+  dispatch(fetchTransactions({ page, size }));
+};
+  
+useEffect(() => {
+  dispatch(fetchTransactions({ page, size }));
+  dispatch(fetchSummary());
+}, [dispatch,page,size]);
   const clearForm = () => {
     setCategory("");
     setAmount("");
@@ -138,44 +133,43 @@ const [balance, setBalance] = useState(0);
     setDate(null);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
 
-    const newTransaction = {
-      category,
-      amount,
-      type,
-      note,
-      date: date ? date.format("YYYY-MM-DD") : "",
-    };
+const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    setShowModal(false);
-    clearForm();
-const token = localStorage.getItem("token");
-    await fetch("http://localhost:8080/addTransaction", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" ,
-          "Authorization": `Bearer ${token}`,
-      },
-      body: JSON.stringify(newTransaction),
-    });
-
-    loadTransaction();
+  const newTransaction = {
+    category,
+    amount,
+    type,
+    note,
+    date: date ? date.format("YYYY-MM-DD") : "",
   };
+
+  await dispatch(createTransactions(newTransaction));
+
+  dispatch(fetchTransactions({ page, size }));
+  dispatch(fetchSummary());
+
+  setShowModal(false);
+  clearForm();
+};
 const handleChangePage = (event, newPage) => {
   setPage(newPage);
 };
-
-  
-
   const fromStr = fromDate ? fromDate.format("YYYY-MM-DD") : "";
   const toStr = toDate ? toDate.format("YYYY-MM-DD") : "";
-
-  const filteredTransactions = transaction
-    .filter((t) => (fromStr === "" || t.date >= fromStr) && (toStr === "" || t.date <= toStr))
-    .filter((t) => filter === "All" || t.type === filter);
+const filteredTransactions = (transactions || [])
+  .filter(
+    (t) =>
+      (fromStr === "" || t.date >= fromStr) &&
+      (toStr === "" || t.date <= toStr)
+  )
+  .filter((t) => filter === "All" || t.type === filter);
+ 
+ 
     const handleLogout = () => {
-  localStorage.removeItem("token"); // Remove JWT token
+      dispatch(logout());
+
   navigate("/login",{replace:true}); // Navigate to Login page
 };
 useEffect(() => {
@@ -194,7 +188,7 @@ useEffect(() => {
   return () => clearTimeout(timer);
 }, [navigate]);
 const loadSummary = async () => {
-
+   
     const token = localStorage.getItem("token");
 
     const response = await fetch(
@@ -221,49 +215,42 @@ const loadSummary = async () => {
     setBalance(data.balance);
 };
 const updateTransaction = async (e) => {
-   e.preventDefault();
+
+    e.preventDefault();
+
     const transaction = {
         category,
         amount,
         type,
         note,
-        date
+        date,
     };
 
-    const response = await fetch(
-        `http://localhost:8080/transaction/${editId}`,
-        {
-            method: "PUT",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${localStorage.getItem("token")}`
-            },
-            body: JSON.stringify(transaction)
-        }
+    await dispatch(
+        updateTransactionAction({
+            id: editId,
+            transaction,
+        })
     );
 
-    if (response.ok) {
-    loadTransaction();
-    loadSummary();
+    dispatch(fetchTransactions({ page, size }));
+    dispatch(fetchSummary());
+
     clearForm();
+
     seteditId(null);
+
     setShowModal(false);
-  }
 };
+
 const deleteTransaction = async (id) => {
 
-    const token = localStorage.getItem("token");
+    await dispatch(deleteTransactionAction(id));
 
-    await fetch(`http://localhost:8080/transaction/${id}`, {
-        method: "DELETE",
-        headers: {
-            "Authorization": `Bearer ${token}`,
-            "Content-Type": "application/json"
-        }
-    });
+    dispatch(fetchTransactions({ page, size }));
 
-    loadTransaction();
-    loadSummary();
+    dispatch(fetchSummary());
+
 };
   return (
     <ThemeProvider theme={theme}>
@@ -446,9 +433,7 @@ const deleteTransaction = async (id) => {
     Logout
   </Button>
 </Box>
-          {/* <Typography variant="h4" gutterBottom>
-            Expense Tracker
-          </Typography> */}
+         
 
           {/* ---------------- Filter Bar ---------------- */}
           <Paper
@@ -631,6 +616,7 @@ const deleteTransaction = async (id) => {
                   </TableCell>
                   <TableCell sx={{ fontWeight: 700, color: "primary.main" }}>Type</TableCell>
                   <TableCell sx={{ fontWeight: 700, color: "primary.main" }}>Note</TableCell>
+                 <TableCell sx={{ fontWeight: 700, color: "primary.main" }}>Action</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -659,8 +645,8 @@ const deleteTransaction = async (id) => {
                         variant="outlined"
                       />
                     </TableCell>
-                    <TableCell>{t.note}</TableCell>
-                    <TableCell>
+                    <TableCell>{t.note}-</TableCell>
+                  <TableCell>
                        <IconButton
         variant="contained"
        

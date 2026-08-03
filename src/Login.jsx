@@ -10,26 +10,28 @@ import {
   InputAdornment,
   TextField,
   Typography,
+  Snackbar,
+  Alert,
 } from "@mui/material";
-import { useEffect } from "react";
 import { Visibility, VisibilityOff } from "@mui/icons-material";
-
+import { loginSuccess } from "./redux/authSlice";
+import { useDispatch } from "react-redux";
 function Login() {
   const [formData, setFormData] = useState({
     email: "",
     password: "",
   });
-  const[lastemail,setLastEmail]=useState("");
+ 
  const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
-
+const [openAlert, setOpenAlert] = useState(false);
   const handleChange = (e) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value,
     });
   };
-
+const dispatch = useDispatch();
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -45,20 +47,24 @@ function Login() {
     const result = await response.json();
 
     console.log(result);
- if (response.ok && result.accessToken) {
 
-    // Save J
-    localStorage.setItem("token", result.accessToken);
-     localStorage.setItem("loginTime", Date.now());
-    
-    // Go to Dashboard
-    navigate("/dashboard",{replace: true});
+if (response.ok && result.accessToken) {
+  dispatch(loginSuccess(result));
+  // localStorage.setItem("token", result.accessToken);
+  localStorage.setItem("loginTime", Date.now());
 
-  } else {
+  // Show success alert
+  setOpenAlert(true);
 
-    console.error(result.message || "Invalid Email or Password");
-  }
-  };
+  // Navigate after 1.5 seconds
+   setTimeout(() => {
+    navigate("/dashboard", { replace: true });
+   }, 1500);
+} else {
+  
+  alert(result.message || "Invalid Email or Password");
+}
+};
 
   return (
     <Container maxWidth="sm">
@@ -160,8 +166,23 @@ function Login() {
           </CardContent>
         </Card>
       </Box>
+      <Snackbar
+  open={openAlert}
+  autoHideDuration={1500}
+  onClose={() => setOpenAlert(false)}
+  anchorOrigin={{ vertical: "top", horizontal: "right" }}
+>
+  <Alert
+    onClose={() => setOpenAlert(false)}
+    severity="success"
+    variant="filled"
+    sx={{ width: "100%" }}
+  >
+    Login successful!
+  </Alert>
+</Snackbar>
     </Container>
   );
-}
+  }
 
 export default Login;
