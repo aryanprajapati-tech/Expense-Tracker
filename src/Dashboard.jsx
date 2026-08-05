@@ -4,18 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
-import { useDispatch, useSelector } from "react-redux";
-
-import {
-  fetchTransactions,
-  createTransactions,
-  updateTransactions as updateTransactionAction,
-  deleteTransactions as deleteTransactionAction,
-} from "./redux/transactionSlice";
-
-import { fetchSummary } from "./redux/summarySlice";
-
-import { logout } from "./redux/authSlice";
+import { Snackbar, Alert } from "@mui/material";
+import { PieChart } from '@mui/x-charts/PieChart';
 import EditIcon from "@mui/icons-material/Edit";
 import {
   Box,
@@ -59,7 +49,8 @@ import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import AccountBalanceWalletIcon from "@mui/icons-material/AccountBalanceWallet";
 import DeleteIcon from "@mui/icons-material/Delete";
-
+import Tabs from '@mui/material/Tabs';
+import Tab from '@mui/material/Tab';
 // ----- Consistent color palette pulled from the original design -----
 const theme = createTheme({
   palette: {
@@ -99,32 +90,50 @@ function Dashboard() {
   const [type, setType] = useState("");
   const [note, setNote] = useState("");
   const [date, setDate] = useState(null);
-const[editId,seteditId]=useState(null);
+  const [editId, seteditId] = useState(null);
+  const [chartFilter, setChartFilter] = useState("1M");
   const [fromDate, setFromDate] = useState(null);
   const [toDate, setToDate] = useState(null);
   const [filter, setFilter] = useState("All");
-   const navigate = useNavigate();
+  const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
   const today = dayjs();
-const dispatch = useDispatch();
-const size=10;
- const transactions = useSelector(
-  (state) => state.transaction.transactions 
-);
-const totalPages = useSelector(
-  (state) => state.transaction.totalPages
-);
-const { totalIncome, totalExpense, balance } = useSelector(
-  (state) => state.summary
-);
-const loadTransaction = () => {
-  dispatch(fetchTransactions({ page, size }));
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [transactions,setTransactions]=useState([]);
+  const[totalPages,setTotalPages]=useState(0);
+  const [totalIncome, setTotalIncome] = useState(0);
+const [totalExpense, setTotalExpense] = useState(0);
+const [balance, setBalance] = useState(0);
+// const [pieData, setPieData] = useState([]);
+const [categorySummary, setCategorySummary] = useState([]);
+  const [page, setPage] = useState(0);
+  const [tab, setTab] = useState(0);
+  const size = 10;
+const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+const [deleteId, setDeleteId] = useState(null);
+ 
+  const loadTransactions = async () => {
+  const token = localStorage.getItem("token");
+
+  const response = await fetch("http://localhost:8080/transaction?page=0&size=10", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  const data = await response.json();
+
+  setTransactions(data.content);
+  setTotalPages(data.totalPages);
 };
-  
-useEffect(() => {
-  dispatch(fetchTransactions({ page, size }));
-  dispatch(fetchSummary());
-}, [dispatch,page,size]);
+
+  useEffect(() => {
+    loadTransactions();
+ 
+    loadSummary();
+  }, [page]);
+
   const clearForm = () => {
     setCategory("");
     setAmount("");
@@ -134,78 +143,94 @@ useEffect(() => {
   };
 
 
-const handleSubmit = async (e) => {
-  e.preventDefault();
+const handleSubmit = async () => {
+  const token = localStorage.getItem("token");
 
-  const newTransaction = {
+  const transaction = {
     category,
     amount,
     type,
     note,
-    date: date ? date.format("YYYY-MM-DD") : "",
+    date,
   };
 
-  await dispatch(createTransactions(newTransaction));
+  await fetch("http://localhost:8080/addTransaction", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(transaction),
+  });
 
-  dispatch(fetchTransactions({ page, size }));
-  dispatch(fetchSummary());
-
+  loadTransactions();
+  loadSummary();
   setShowModal(false);
+  
   clearForm();
+  setSnackbarOpen(true);
 };
-const handleChangePage = (event, newPage) => {
-  setPage(newPage);
-};
+  const handleChangePage = (event, newPage) => {
+    setPage(newPage);
+  };
   const fromStr = fromDate ? fromDate.format("YYYY-MM-DD") : "";
   const toStr = toDate ? toDate.format("YYYY-MM-DD") : "";
-const filteredTransactions = (transactions || [])
-  .filter(
-    (t) =>
-      (fromStr === "" || t.date >= fromStr) &&
-      (toStr === "" || t.date <= toStr)
-  )
-  .filter((t) => filter === "All" || t.type === filter);
- 
- 
-    const handleLogout = () => {
-      dispatch(logout());
+  const filteredTransactions = (transactions || [])
+    .filter(
+      (t) =>
+        (fromStr === "" || t.date >= fromStr) &&
+        (toStr === "" || t.date <= toStr)
+    )
+    .filter((t) => filter === "All" || t.type === filter);
 
-  navigate("/login",{replace:true}); // Navigate to Login page
-};
-useEffect(() => {
-  const token = localStorage.getItem("token");
- 
-  if (!token) {
-    navigate("/login",{replace:true});
-  }
-}, [navigate]);
-useEffect(() => {
+
+  const handleLogout = () => {
+    
+
+    navigate("/login", { replace: true }); // Navigate to Login page
+  };
+  useEffect(() => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      navigate("/login", { replace: true });
+    }
+  }, [navigate]);
+  
+ useEffect(() => {
   const timer = setTimeout(() => {
     localStorage.removeItem("token");
+   // clear Redux state
     navigate("/login", { replace: true });
-  }, 60 * 60 * 1000);
+  },60 * 60 * 1000); // 1 hour
 
   return () => clearTimeout(timer);
 }, [navigate]);
-const loadSummary = async () => {
-   
+// const handleFilterClick = (filter) => {
+//   setChartFilter(filter);
+// };
+const handleChartFilter = (value) => {
+  setChartFilter(value);
+};
+  const loadSummary = async () => {
+
     const token = localStorage.getItem("token");
 
     const response = await fetch(
-        "http://localhost:8080/transaction/summary",
-        {
-            method: "GET",
-            headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json"
-            }
+      "http://localhost:8080/transaction/summary",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json"
         }
+      }
     );
 
     if (response.status === 401) {
-        localStorage.removeItem("token");
-        navigate("/login", { replace: true });
-        return;
+      localStorage.removeItem("token");
+      navigate("/login", { replace: true });
+      return;
     }
 
     const data = await response.json();
@@ -213,45 +238,145 @@ const loadSummary = async () => {
     setTotalIncome(data.totalIncome);
     setTotalExpense(data.totalExpense);
     setBalance(data.balance);
-};
+  };
+
+ 
+
+
+ 
 const updateTransaction = async (e) => {
-
-    e.preventDefault();
-
+   e.preventDefault();
     const transaction = {
         category,
         amount,
         type,
         note,
-        date,
+        date
     };
 
-    await dispatch(
-        updateTransactionAction({
-            id: editId,
-            transaction,
-        })
+    const response = await fetch(
+        `http://localhost:8080/transaction/${editId}`,
+        {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${localStorage.getItem("token")}`
+            },
+            body: JSON.stringify(transaction)
+        }
     );
 
-    dispatch(fetchTransactions({ page, size }));
-    dispatch(fetchSummary());
-
+    if (response.ok) {
+    loadTransactions();
+    loadSummary();
+    loadCategorySummary();
     clearForm();
-
     seteditId(null);
-
     setShowModal(false);
+  }
 };
-
 const deleteTransaction = async (id) => {
 
-    await dispatch(deleteTransactionAction(id));
+    const token = localStorage.getItem("token");
 
-    dispatch(fetchTransactions({ page, size }));
+   const response= await fetch(`http://localhost:8080/transaction/${id}`, {
+        method: "DELETE",
+        headers: {
+            "Authorization": `Bearer ${token}`,
+            "Content-Type": "application/json"
+        }
+    });
 
-    dispatch(fetchSummary());
-
+    if (response.ok) {
+    loadTransactions();
+    loadSummary();
+    loadCategorySummary();
+    setDeleteDialogOpen(false);
+    setDeleteId(null);
+  }
 };
+const loadCategorySummary = async () => {
+  const { fromDate, toDate } = getDateRange();
+  
+  const token = localStorage.getItem("token");
+
+  const response = await fetch(
+    "http://localhost:8080/category-summary",
+    {
+      method:"POST",
+      headers: {
+        
+        Authorization: `Bearer ${token}`,
+         "Content-Type": "application/json",
+      },
+       body: JSON.stringify({
+        fromDate,
+        toDate,
+      }),
+    }
+  );
+
+ const data = await response.json();
+
+    // setPieData(data);
+      loadTransactions();
+      
+  setCategorySummary(data);
+};
+useEffect(() => {
+  loadTransactions();
+  loadSummary();
+loadCategorySummary();
+}, [chartFilter])
+const pieData = categorySummary.map((item, index) => ({
+  id: index,
+  value: Number(item.totalAmount),
+  label: item.category,
+}));
+  
+  const getDateRange = () => {
+    const today = dayjs();
+
+    switch (chartFilter) {
+      case "1M":
+       
+        return {
+          fromDate: today.subtract(1, "month").format("YYYY-MM-DD"),
+          toDate: today.format("YYYY-MM-DD"),
+        };
+        
+      case "3M":
+      
+        return {
+          fromDate: today.subtract(3, "month").format("YYYY-MM-DD"),
+          toDate: today.format("YYYY-MM-DD"),
+        };
+
+      case "6M":
+       
+        return {
+          fromDate: today.subtract(6, "month").format("YYYY-MM-DD"),
+          toDate: today.format("YYYY-MM-DD"),
+        };
+
+      case "1Y":
+        
+        return {
+          fromDate: today.subtract(1, "year").format("YYYY-MM-DD"),
+          toDate: today.format("YYYY-MM-DD"),
+        };
+
+      case "CUSTOM":
+        return {
+          fromDate: fromDate?.format("YYYY-MM-DD"),
+          toDate: toDate?.format("YYYY-MM-DD"),
+        };
+
+      default:
+        return {};
+    }
+  };
+ 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -287,7 +412,7 @@ const deleteTransaction = async (id) => {
               }}
             >
               <Typography variant="h6" sx={{ color: "#fff", fontWeight: 700 }}>
-              {editId ? "Update Transaction" : "Add Transaction"}
+                {editId ? "Update Transaction" : "Add Transaction"}
               </Typography>
               <IconButton
                 size="small"
@@ -303,16 +428,16 @@ const deleteTransaction = async (id) => {
 
             <DialogContent sx={{ pt: 3 }}>
               <Box component="form"
-                 onSubmit={(e) => {
-        e.preventDefault();
+                onSubmit={(e) => {
+                  e.preventDefault();
 
-        if (editId) {
-            updateTransaction(e);
-        } else {
-            handleSubmit(e);
-        }
-    }}
-             
+                  if (editId) {
+                    updateTransaction(e);
+                  } else {
+                    handleSubmit(e);
+                  }
+                }}
+
               >
                 <Stack spacing={2.5}>
                   <FormControl fullWidth required size="small">
@@ -352,7 +477,7 @@ const deleteTransaction = async (id) => {
                   />
 
                   <FormControl >
-                    <Typography variant="body2"   sx={{ color: "secondary.main", mb: 0.5 }}>
+                    <Typography variant="body2" sx={{ color: "secondary.main", mb: 0.5 }}>
                       Type
                     </Typography>
                     <RadioGroup
@@ -362,7 +487,7 @@ const deleteTransaction = async (id) => {
                     >
                       <FormControlLabel
                         value="INCOME"
-                        control={<Radio  required color="success" />}
+                        control={<Radio required color="success" />}
                         label="Income"
                       />
                       <FormControlLabel
@@ -392,8 +517,9 @@ const deleteTransaction = async (id) => {
                     value={date}
                     onChange={(newValue) => setDate(newValue)}
                     maxDate={today}
-                    slotProps={{ textField: { fullWidth: true, required: true, size: "small" } 
-                  }}
+                    slotProps={{
+                      textField: { fullWidth: true, required: true, size: "small" }
+                    }}
                   />
 
                   <Button
@@ -404,118 +530,56 @@ const deleteTransaction = async (id) => {
                     fullWidth
                     sx={{ py: 1.2, fontSize: "15px" }}
                   >
-                    
-                      {editId ? "Update" : "Save"}
+
+                    {editId ? "Update" : "Save"}
                   </Button>
                 </Stack>
               </Box>
             </DialogContent>
           </Dialog>
-
+       
           {/* ---------------- Header ---------------- */}
-         <Box
-  sx={{
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    mb: 2,
-  }}
->
-  <Typography variant="h4">
-    Expense Tracker
-  </Typography>
-
-  <Button
-    variant="contained"
-    color="error"
-    onClick={handleLogout}
-  >
-    Logout
-  </Button>
-</Box>
-         
-
-          {/* ---------------- Filter Bar ---------------- */}
-          <Paper
-            elevation={0}
+          <Box
             sx={{
               display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
               justifyContent: "space-between",
-              gap: 2,
-              p: 2,
-              my: 3,
-              border: "1px solid #e0e0e6",
+              alignItems: "center",
+              mb: 2,
             }}
           >
-      
+            <Typography variant="h4">
+              Expense Tracker
+            </Typography>
 
-            <Stack
-    direction="row"
-    spacing={2}
-    sx={{
-        alignItems: "center",
-        flexWrap: "wrap",
-    }}
->
-              <DatePicker
-                label="From"
-                value={fromDate}
-                onChange={(newValue) => setFromDate(newValue)}
-                maxDate={today}
-                slotProps={{
-                    field: {
-      clearable: true,
-      onClear: () => setFromDate(null),
-    },
-                  textField: { size: "small", sx: { width: 170 }
-               }, 
-                   actionBar: {
-      actions: ["clear", "cancel"],
-    },
-         
-              }}
-              />
-              <DatePicker
-                label="To"
-                value={toDate}
-                onChange={(newValue) => setToDate(newValue)}
-                minDate={fromDate || undefined}
-                maxDate={today}
-                slotProps={{
-                    field: {
-      clearable: true,
-      onClear: () => setFromDate(null),
-    },
-                  textField: { size: "small", sx: { width: 170 } },
-                 actionBar: {
-      actions: ["clear", "cancel"],
-    },
-              }}
-              
-              />
-                 
-          </Stack>
+            <Button
+              variant="contained"
+              color="error"
+              onClick={handleLogout}
+            >
+              Logout
+            </Button>
 
-            <FormControl size="small" sx={{ minWidth: 160 }}>
-              <InputLabel id="filter-label">Type</InputLabel>
-              <Select
-                labelId="filter-label"
-                label="Type"
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                startAdornment={
-                  <InputAdornment position="start">
-                    <FilterAltIcon fontSize="small" sx={{ color: "secondary.main" }} />
-                  </InputAdornment>
-                }
-              >
-                <MenuItem value="All">All</MenuItem>
-                <MenuItem value="INCOME">Income</MenuItem>
-                <MenuItem value="EXPENSE">Expense</MenuItem>
-              </Select>
-            </FormControl>
+
+          </Box>
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              borderBottom: 1,
+              borderColor: "divider",
+              mb: 3,
+            }}
+          >
+            <Tabs
+              value={tab}
+              onChange={(e, newValue) => setTab(newValue)}
+              textColor="primary"
+              indicatorColor="primary"
+            >
+              <Tab label="Summary" />
+              <Tab label="Transactions" />
+            </Tabs>
 
             <Button
               variant="contained"
@@ -525,197 +589,403 @@ const deleteTransaction = async (id) => {
                 clearForm();
                 setShowModal(true);
               }}
-              sx={{ px: 2.5, py: 1.2 }}
+              sx={{ mb: 1 }}
             >
               Add Transaction
             </Button>
-          </Paper>
 
-          {/* ---------------- Summary Cards ---------------- */}
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={2} sx={{ mb: 3 }}>
-            <Paper
-              elevation={0}
-              sx={{
-                flex: 1,
-                p: 2.5,
-                border: "1px solid #e0e0e6",
-                display: "flex",
-                alignItems: "center",
-                gap: 1.5,
-              }}
-            >
-              <TrendingUpIcon sx={{ color: "success.main", fontSize: 32 }} />
-              <Box>
-                <Typography variant="body2" color="secondary">
-                  Total Income
-                </Typography>
-                <Typography variant="h6" sx={{ color: "success.main" }}>
-                  ₹{totalIncome}
-                </Typography>
-              </Box>
-            </Paper>
 
-            <Paper
-              elevation={0}
-              sx={{
-                flex: 1,
-                p: 2.5,
-                border: "1px solid #e0e0e6",
-                display: "flex",
-                alignItems: "center",
-                gap: 1.5,
-              }}
-            >
-              <TrendingDownIcon sx={{ color: "error.main", fontSize: 32 }} />
-              <Box>
-                <Typography variant="body2" color="secondary">
-                  Total Expense
-                </Typography>
-                <Typography variant="h6" sx={{ color: "error.main" }}>
-                  ₹{totalExpense}
-                </Typography>
-              </Box>
-            </Paper>
+          </Box>
+          {tab === 0 && (
+            <>
+              <Stack direction={{ xs: "column", md: "row" }} spacing={3}>
+                <Paper sx={{ flex: 1, p: 3, display: "flex", gap: 2 }}>
+                  <TrendingUpIcon color="success" sx={{ fontSize: 40 }} />
+                  <Box>
+                    <Typography color="text.secondary">Total Income</Typography>
+                    <Typography variant="h5" color="success.main" fontWeight="bold">
+                      ₹{totalIncome}
+                    </Typography>
+                  </Box>
+                </Paper>
 
-            <Paper
-              elevation={0}
-              sx={{
-                flex: 1,
-                p: 2.5,
-                border: "1px solid #e0e0e6",
-                display: "flex",
-                alignItems: "center",
-                gap: 1.5,
-              }}
-            >
-              <AccountBalanceWalletIcon sx={{ color: "primary.main", fontSize: 32 }} />
-              <Box>
-                <Typography variant="body2" color="secondary">
-                  Balance
-                </Typography>
-                <Typography variant="h6" sx={{ color: "primary.main" }}>
-                  ₹{balance}
-                </Typography>
-              </Box>
-            </Paper>
-          </Stack>
+                <Paper sx={{ flex: 1, p: 3, display: "flex", gap: 2 }}>
+                  <TrendingDownIcon color="error" sx={{ fontSize: 40 }} />
+                  <Box>
+                    <Typography color="text.secondary">Total Expense</Typography>
+                    <Typography variant="h5" color="error.main" fontWeight="bold">
+                      ₹{totalExpense}
+                    </Typography>
+                  </Box>
+                </Paper>
 
-          {/* ---------------- Transactions Table ---------------- */}
-          <Typography variant="h6" gutterBottom>
-            Transactions
-          </Typography>
+                <Paper sx={{ flex: 1, p: 3, display: "flex", gap: 2 }}>
+                  <AccountBalanceWalletIcon color="primary" sx={{ fontSize: 40 }} />
+                  <Box>
+                    <Typography color="text.secondary">Balance</Typography>
+                    <Typography variant="h5" color="primary.main" fontWeight="bold">
+                      ₹{balance}
+                    </Typography>
+                  </Box>
+                </Paper>
 
-          <TableContainer component={Paper} elevation={0} sx={{ border: "1px solid #e0e0e6" }}>
-            <Table>
-              <TableHead>
-                <TableRow sx={{ bgcolor: "#eef1f8" }}>
-                  <TableCell sx={{ fontWeight: 700, color: "primary.main" }}>Date</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: "primary.main" }}>Category</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: "primary.main" }} align="right">
-                    Amount
-                  </TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: "primary.main" }}>Type</TableCell>
-                  <TableCell sx={{ fontWeight: 700, color: "primary.main" }}>Note</TableCell>
-                 <TableCell sx={{ fontWeight: 700, color: "primary.main" }}>Action</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {filteredTransactions.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5} align="center" sx={{ color: "secondary.main", py: 4 }}>
-                      No transactions found
-                    </TableCell>
-                  </TableRow>
-                )}
-                {filteredTransactions.map((t, idx) => (
-                  <TableRow key={t.id ?? idx} hover>
-                    <TableCell>{t.date}</TableCell>
-                    <TableCell>{t.category}</TableCell>
-                    <TableCell
-                      align="right"
-                      sx={{ color: t.type === "INCOME" ? "success.main" : "error.main", fontWeight: 600 }}
-                    >
-                      ₹{t.amount}
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={t.type}
-                        size="small"
-                        color={t.type === "INCOME" ? "success" : "error"}
-                        variant="outlined"
-                      />
-                    </TableCell>
-                    <TableCell>{t.note}-</TableCell>
-                  <TableCell>
-                       <IconButton
-        variant="contained"
-       
-        color="warning"
-        onClick={() => {
+              </Stack>
+              <Box
+                sx={{
+                  mt: 4,
+                  display: "flex",
+                  justifyContent: "center",
+                }}
+              >
+                <Paper
+                  elevation={3}
+                  sx={{
+                    p: 3,
+                    width: 650,
+                    borderRadius: 3,
+                  }}
+                >
+                  <Typography
+                    variant="h6"
+                    align="center"
+                    mb={2}
+                    fontWeight="bold"
+                  >
+                    Expense by Category
+                  </Typography>
 
-            seteditId(t.id);
+                 
+              
+                 
 
-            setCategory(t.category);
-            setAmount(t.amount);
-            setType(t.type);
-            setNote(t.note);
-            setDate(dayjs(t.date));
-
-            setShowModal(true);
-
-        }}
-    >
-        
-    <EditIcon/>
-     </IconButton>
-
-    <IconButton
-        color="error"
-        onClick={() => deleteTransaction(t.id)}
-    >
-        <DeleteIcon />
-    </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))}
-             
-              </TableBody>
-            </Table>
-          </TableContainer>
-          <Box
-  sx={{
-    display: "flex",
-    justifyContent: "flex-end",
-    alignItems: "center",
-    gap: 2,
-    mt: 3,
-    pr:2,
-  }}
+              
+                  <Stack
+  direction="row"
+  spacing={2}
+  justifyContent="center"
+  sx={{ mb: 3 }}
 >
   <Button
-    variant="contained"
-    disabled={page === 0}
-    onClick={() => setPage(page - 1)}
+    variant={chartFilter === "1M" ? "contained" : "outlined"}
+    onClick={() => handleChartFilter("1M")}
   >
-    Previous
+    1 Month
   </Button>
-
-  <Typography>
-    Page {page + 1} of {totalPages}
-  </Typography>
 
   <Button
-    variant="contained"
-    disabled={page === totalPages - 1}
-    onClick={() => setPage(page + 1)}
+    variant={chartFilter === "3M" ? "contained" : "outlined"}
+    onClick={() => handleChartFilter("3M")}
   >
-    Next
+    3 Months
   </Button>
-</Box>
+
+  <Button
+    variant={chartFilter === "6M" ? "contained" : "outlined"}
+    onClick={() => handleChartFilter("6M")}
+  >
+    6 Months
+  </Button>
+
+  <Button
+    variant={chartFilter === "1Y" ? "contained" : "outlined"}
+    onClick={() => handleChartFilter("1Y")}
+  >
+    1 Year
+  </Button>
+
+  <Button
+    variant={chartFilter === "CUSTOM" ? "contained" : "outlined"}
+    onClick={() => handleChartFilter("CUSTOM")}
+  >
+    Custom
+  </Button>
+</Stack>
+                  <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
+                    <PieChart
+                      width={500}
+                      height={300}
+                      series={[
+                        {
+                          data: pieData,
+                          innerRadius: 50,
+                          outerRadius: 110,
+                          paddingAngle: 2,
+                          cornerRadius: 5,
+                        },
+                      ]}
+                    />
+                  </Box>
+                 
+                </Paper>
+              </Box>
+            </>
+          )}
+          {tab === 1 && (
+            <>
+              {/* ---------------- Filter Bar ---------------- */}
+
+
+              <Paper
+                elevation={0}
+                sx={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 2,
+                  p: 2,
+                  my: 3,
+                  border: "1px solid #e0e0e6",
+                }}
+              >
+
+
+                <Stack
+                  direction="row"
+                  spacing={2}
+                  sx={{
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <DatePicker
+                    label="From"
+                    value={fromDate}
+                    onChange={(newValue) => setFromDate(newValue)}
+                    maxDate={today}
+                    slotProps={{
+                      field: {
+                        clearable: true,
+                        onClear: () => setFromDate(null),
+                      },
+                      textField: {
+                        size: "small", sx: { width: 170 }
+                      },
+                      actionBar: {
+                        actions: ["clear", "cancel"],
+                      },
+
+                    }}
+                  />
+                  <DatePicker
+                    label="To"
+                    value={toDate}
+                    onChange={(newValue) => setToDate(newValue)}
+                    minDate={fromDate || undefined}
+                    maxDate={today}
+                    slotProps={{
+                      field: {
+                        clearable: true,
+                        onClear: () => setFromDate(null),
+                      },
+                      textField: { size: "small", sx: { width: 170 } },
+                      actionBar: {
+                        actions: ["clear", "cancel"],
+                      },
+                    }}
+
+                  />
+
+                </Stack>
+
+                <FormControl size="small" sx={{ minWidth: 160 }}>
+                  <InputLabel id="filter-label">Type</InputLabel>
+                  <Select
+                    labelId="filter-label"
+                    label="Type"
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                    startAdornment={
+                      <InputAdornment position="start">
+                        <FilterAltIcon fontSize="small" sx={{ color: "secondary.main" }} />
+                      </InputAdornment>
+                    }
+                  >
+                    <MenuItem value="All">All</MenuItem>
+                    <MenuItem value="INCOME">Income</MenuItem>
+                    <MenuItem value="EXPENSE">Expense</MenuItem>
+                  </Select>
+                </FormControl>
+
+
+              </Paper>
+
+
+              {/*---------------- Transactions Table ----------------*/}
+              <Typography variant="h6" gutterBottom>
+                Transactions
+              </Typography>
+
+              <TableContainer component={Paper} elevation={0} sx={{ border: "1px solid #e0e0e6" }}>
+                <Table>
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: "#eef1f8" }}>
+                      <TableCell sx={{ fontWeight: 700, color: "primary.main" }}>Date</TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: "primary.main" }}>Category</TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: "primary.main" }} align="right">
+                        Amount
+                      </TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: "primary.main" }}>Type</TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: "primary.main" }}>Note</TableCell>
+                      <TableCell sx={{ fontWeight: 700, color: "primary.main" }}>Action</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {filteredTransactions.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} align="center" sx={{ color: "secondary.main", py: 4 }}>
+                          No transactions found
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {filteredTransactions.map((t, idx) => (
+                      <TableRow key={t.id ?? idx} hover>
+                        <TableCell>{t.date}</TableCell>
+                        <TableCell>{t.category}</TableCell>
+                        <TableCell
+                          align="right"
+                          sx={{ color: t.type === "INCOME" ? "success.main" : "error.main", fontWeight: 600 }}
+                        >
+                          ₹{t.amount}
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={t.type}
+                            size="small"
+                            color={t.type === "INCOME" ? "success" : "error"}
+                            variant="outlined"
+                          />
+                        </TableCell>
+                        <TableCell>{t.note}-</TableCell>
+                        <TableCell>
+                          <IconButton
+                            variant="contained"
+
+                            color="warning"
+                            onClick={() => {
+
+                              seteditId(t.id);
+
+                              setCategory(t.category);
+                              setAmount(t.amount);
+                              setType(t.type);
+                              setNote(t.note);
+                              setDate(dayjs(t.date));
+
+                              setShowModal(true);
+
+                            }}
+                          >
+
+                            <EditIcon />
+                          </IconButton>
+
+                          <IconButton
+                            color="error"
+                            onClick={() => {
+  setDeleteId(t.id);
+  setDeleteDialogOpen(true);
+}}
+                            // onClick={() => {deleteTransaction(t.id); setDeleteDialogOpen(true);}}
+                          >
+                            <DeleteIcon />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                           <Dialog
+  open={deleteDialogOpen}
+  onClose={() => setDeleteDialogOpen(false)}
+  maxWidth="xs"
+  fullWidth
+>
+  <DialogContent sx={{ p: 3 }}>
+    <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+      Delete Transaction
+    </Typography>
+
+    <Typography sx={{ mb: 3 }}>
+      Are you sure you want to delete this transaction?
+    </Typography>
+
+    <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 2 }}>
+      <Button
+        variant="outlined"
+        onClick={() => {
+  setDeleteDialogOpen(false);
+  setDeleteId(null);
+}}
+        // onClick={() => setDeleteDialogOpen(false)}
+      >
+        No
+      </Button>
+
+      <Button
+        variant="contained"
+        color="error"
+        onClick={() => deleteTransaction(deleteId)}
+      >
+        Yes
+      </Button>
+    </Box>
+  </DialogContent>
+</Dialog>
+                  </TableBody>
+                </Table>
+              </TableContainer>
+              <Box
+                sx={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  alignItems: "center",
+                  gap: 2,
+                  mt: 3,
+                  pr: 2,
+                }}
+              >
+                <Button
+                  variant="contained"
+                  disabled={page === 0}
+                  onClick={() => setPage(page - 1)}
+                >
+                  Previous
+                </Button>
+
+                <Typography>
+                  Page {page + 1} of {totalPages}
+                </Typography>
+
+                <Button
+                  variant="contained"
+                  disabled={page === totalPages - 1}
+                  onClick={() => setPage(page + 1)}
+                >
+                  Next
+                </Button>
+
+              </Box>
+            </>
+          )}
         </Box>
+
       </LocalizationProvider>
+<Snackbar
+  open={snackbarOpen}
+  autoHideDuration={3000}
+  onClose={() => setSnackbarOpen(false)}
+  anchorOrigin={{ vertical: "top", horizontal: "right" }}
+>
+  <Alert
+    onClose={() => setSnackbarOpen(false)}
+    severity="success"
+    variant="filled"
+    sx={{ width: "100%" }}
+  >
+    Transaction added successfully!
+  </Alert>
+</Snackbar>
     </ThemeProvider>
+
   );
 }
-
 export default Dashboard;

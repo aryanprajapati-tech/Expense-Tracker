@@ -14,8 +14,10 @@ import {
   Alert,
 } from "@mui/material";
 import { Visibility, VisibilityOff } from "@mui/icons-material";
-import { loginSuccess } from "./redux/authSlice";
+// import { loginSuccess } from "./redux/authSlice";
+import { loginUser } from "./redux/authSlice";
 import { useDispatch } from "react-redux";
+
 function Login() {
   const [formData, setFormData] = useState({
     email: "",
@@ -32,39 +34,21 @@ const [openAlert, setOpenAlert] = useState(false);
     });
   };
 const dispatch = useDispatch();
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    const response = await fetch("http://localhost:8080/login", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(formData),
-    });
+  const result = await dispatch(loginUser(formData));
 
-    // If backend returns JSON
-    const result = await response.json();
+  if (result.payload?.accessToken) {
+    localStorage.setItem("loginTime", Date.now());
+    setOpenAlert(true);
 
-    console.log(result);
-
-if (response.ok && result.accessToken) {
-  dispatch(loginSuccess(result));
-  // localStorage.setItem("token", result.accessToken);
-  localStorage.setItem("loginTime", Date.now());
-
-  // Show success alert
-  setOpenAlert(true);
-
-  // Navigate after 1.5 seconds
-   setTimeout(() => {
-    navigate("/dashboard", { replace: true });
-   }, 1500);
-} else {
-  
-  alert(result.message || "Invalid Email or Password");
-}
+    setTimeout(() => {
+      navigate("/dashboard", { replace: true });
+    }, 1500);
+  }
 };
+
 
   return (
     <Container maxWidth="sm">
